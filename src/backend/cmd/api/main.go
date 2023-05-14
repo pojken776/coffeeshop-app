@@ -2,10 +2,13 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
+	"strings"
 )
 
 var listShopsRe = regexp.MustCompile(`^\/shops[\/]*$`)
@@ -31,7 +34,7 @@ func (h *ShopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.Get(w, r)
 		return
 	case r.Method == http.MethodPost && createShopRe.MatchString(r.URL.Path):
-		fmt.Println("Run the create command")
+		h.Create(w, r)
 		return
 	case r.Method == http.MethodPut && editShopRe.MatchString(r.URL.Path):
 		fmt.Println("Run the edit query")
@@ -42,25 +45,66 @@ func (h *ShopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (handler *ShopHandler) Get(w http.ResponseWriter, r *http.Request) {
-	rows, err := handler.db.Query("SELECT id, name FROM coffeeshops WHERE id = $1", 1)
-	if err != nil {
-		log.Println("Error when attempting to list rows")
-		log.Fatal(err)
-	}
-	defer rows.Close()
+func (handler *ShopHandler) Create(w http.ResponseWriter, r *http.Request) {
 	shop := Shop{}
-	for rows.Next() {
-		err := rows.Scan(&shop.Id, &shop.Name)
-		if err != nil {
-			log.Println("Error when reading in line")
-			log.Fatal(err)
-		}
-		log.Print(shop)
+	if err := json.NewDecoder(r.Body).Decode(&shop); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
-	err = rows.Err()
+
+	statement, err := handler.db.Prepare("INSERT INTO coffeeshops(id, name, address_number, address_street, address_city, address_zip) VALUES(DEFAULT, $1, $2, $3, $4, $5);")
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Error prepapring insert shop statement: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	defer statement.Close()
+
+	result, err := statement.Exec(shop.Name, shop.Address.Number, shop.Address.Street, shop.Address.City, shop.Address.Zip)
+	if err != nil {
+		log.Printf("Error inserting shop: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	log.Println(result)
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Inserted shop"))
+
+}
+
+func (handler *ShopHandler) Get(w http.ResponseWriter, r *http.Request) {
+	targetId, err := strconv.Atoi(strings.Split(r.URL.Path, "/")[2])
+	if err != nil {
+		log.Printf("Unable to convert id to int from path: %s", r.URL.Path)
+		return
+	}
+
+	shop := Shop{}
+	err = handler.db.QueryRow("SELECT id, name FROM coffeeshops WHERE id = $1", targetId).Scan(&shop.Id, &shop.Name)
+
+	switch {
+	case err == sql.ErrNoRows:
+		log.Printf("No shops with id %d", targetId)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Shop not found"))
+		return
+	case err != nil:
+		log.Printf("Query error: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+	default:
+		log.Printf("Found shop with id: %d and name: %s", shop.Id, shop.Name)
+
+		responseBody, err := json.Marshal(shop)
+		if err != nil {
+			log.Printf("Unable to marshal shop response")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write(responseBody)
 	}
 
 }
