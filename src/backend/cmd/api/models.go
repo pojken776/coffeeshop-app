@@ -1,13 +1,22 @@
 package main
 
-import (
-	"time"
-)
+import "time"
 
 type HoursOfOperation struct {
-	Day   time.Weekday
-	Open  time.Time
-	Close time.Time
+	SundayOpen     time.Time
+	SundayClose    time.Time
+	MondayOpen     time.Time
+	MondayClose    time.Time
+	TuesdayOpen    time.Time
+	TuesdayClose   time.Time
+	WednesdayOpen  time.Time
+	WednesdayClose time.Time
+	ThursdayOpen   time.Time
+	ThursdayClose  time.Time
+	FridayOpen     time.Time
+	FridayClose    time.Time
+	SaturdayOpen   time.Time
+	SaturdayClose  time.Time
 }
 
 type Amenities struct {
@@ -36,5 +45,5 @@ type Shop struct {
 	Address          Address
 	Rating           Rating
 	Amenities        Amenities
-	HoursOfOperation []HoursOfOperation
+	HoursOfOperation HoursOfOperation
 }
